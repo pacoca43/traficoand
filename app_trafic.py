@@ -3,10 +3,12 @@ import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
 
+# Configuración inicial
 st.set_page_config(page_title="Monitor DGT", layout="wide")
-st.title("📍 Monitor de Tráfico DGT (Datos V3.7)")
+st.title("📍 Monitor de Tráfico DGT (Datos en Tiempo Real)")
 
-URL = "https://nap.dgt.es/datex2/v3/dgt/SituationPublication/datex2_v37.xml"
+# URL del feed de incidencias real
+URL = "https://infocar.dgt.es/datex2/lod/dgt/incidencias.xml"
 
 @st.cache_data(ttl=300)
 def obtener_datos():
@@ -16,16 +18,15 @@ def obtener_datos():
             return None, f"Error de conexión: {response.status_code}"
         
         root = ET.fromstring(response.content)
-        # Namespace necesario para DATEX II V3
-        ns = {'d2': 'http://datex2.eu/schema/3/d2LogicalModel'}
         
         incidencias = []
-        # Buscamos los registros
-        for record in root.findall('.//d2:situationRecord', ns):
-            # Extraemos info (ajustamos a las etiquetas estándar)
-            road_node = record.find('.//d2:roadNumber', ns)
-            type_node = record.find('.//d2:situationRecordType', ns)
+        # En el XML de infocar, los datos están bajo 'situationRecord'
+        for record in root.findall('.//situationRecord'):
+            # Extracción de campos clave
+            road_node = record.find('.//roadNumber')
+            type_node = record.find('.//situationRecordType')
             
+            # Algunos registros pueden no tener carretera, gestionamos el error
             incidencias.append({
                 "Carretera": road_node.text if road_node is not None else "N/A",
                 "Tipo": type_node.text if type_node is not None else "Sin tipo"
@@ -35,22 +36,26 @@ def obtener_datos():
     except Exception as e:
         return None, str(e)
 
-# Ejecución
+# Ejecución del monitor
 df, error = obtener_datos()
 
 if error:
     st.error(f"Error al cargar datos: {error}")
-elif df.empty:
-    st.warning("El archivo se leyó correctamente pero no contiene incidencias en este momento.")
+elif df is None or df.empty:
+    st.warning("No se pudieron extraer incidencias en este momento.")
 else:
-    st.success(f"Se encontraron {len(df)} incidencias en total.")
+    st.success(f"Se han cargado {len(df)} incidencias en todo el territorio.")
     
-    # Filtro opcional por Andalucía (A-4, A-92, A-49, A-7, etc)
-    st.subheader("Filtrar por Andalucía")
-    filtro = st.checkbox("Mostrar solo carreteras andaluzas (A-4, A-92, A-49, A-7, A-381, A-357)")
+    # Filtro opcional por Andalucía
+    st.subheader("Filtrar incidencias en Andalucía")
+    filtro_andalucia = st.checkbox("Mostrar solo carreteras de Andalucía (A-4, A-92, A-49, A-7, etc.)")
     
-    if filtro:
-        # Lista de prefijos de carreteras andaluzas
-        df = df[df['Carretera'].str.contains('A-4|A-92|A-49|A-7|A-381|A-357', na=False)]
-    
-    st.table(df)
+    if filtro_andalucia:
+        # Filtro basado en las principales autovías andaluzas
+        patron = 'A-4|A-92|A-49|A-7|A-381|A-357|A-45|A-44|A-384|A-382'
+        df_filtrado = df[df['Carretera'].str.contains(patron, na=False)]
+        st.table(df_filtrado)
+    else:
+        st.table(df)
+
+st.caption(f"Última actualización: {pd.Timestamp.now().strftime('%H:%M:%S')}")
