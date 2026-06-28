@@ -1,48 +1,26 @@
 import streamlit as st
 import pandas as pd
-import requests
-from datetime import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-# Configuración de la página
-st.set_page_config(page_title="Tráfico Andalucía", layout="wide")
-st.title("Monitor de Incidencias DGT - Andalucía")
-st.write("Datos en tiempo real obtenidos desde la DGT.")
+# Configuración de Google Sheets
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+client = gspread.authorize(creds)
+sheet = client.open('Historial_Trafico').sheet1
 
-# Función para obtener y procesar datos
-def obtener_datos_dgt():
-    # En un entorno de producción, aquí usarías `requests.get()` 
-    # y parsearías el XML. Por ahora, presentamos una estructura de ejemplo.
-    # Esta parte se conecta a la URL que proporcionaste:
-    # URL = "https://infocar.dgt.es/datex2/lod/dgt/incidencias.rdf"
-    
-    data = {
-        'Timestamp': [datetime.now().strftime("%Y-%m-%d %H:%M")],
-        'Carretera': ['A-4', 'A-92', 'SE-30'],
-        'Incidencia': ['Retención', 'Obras', 'Accidente'],
-        'Punto': ['KM 530', 'KM 120', 'KM 12']
-    }
-    return pd.DataFrame(data)
+def guardar_en_sheets(data):
+    # Añade los datos como una nueva fila en Google Sheets
+    sheet.append_row(data)
 
-# Carga de datos
-df = obtener_datos_dgt()
+st.title("Monitor de Tráfico en Directo")
 
-# Visualización
-st.subheader("Estado actual")
-st.table(df)
+# Ejemplo de datos capturados
+if st.button("Registrar Incidencia Actual"):
+    nueva_fila = ["2026-06-28 13:40", "A-4", "Retención", "KM 530"]
+    guardar_en_sheets(nueva_fila)
+    st.success("¡Guardado en Google Sheets!")
 
-# Sección de Histórico
-st.subheader("Histórico de datos")
-st.write("Descarga el registro completo para análisis:")
-
-# Convertir el DataFrame a CSV para descarga
-csv = df.to_csv(index=False).encode('utf-8')
-
-st.download_button(
-    label="Descargar Histórico en CSV",
-    data=csv,
-    file_name='historial_trafico_andalucia.csv',
-    mime='text/csv',
-)
-
-st.info("Nota: Para que este histórico se guarde automáticamente en la nube, "
-        "la mejor opción es conectar una base de datos externa (como Google Sheets).")
+# Mostrar histórico desde Sheets
+data = sheet.get_all_records()
+st.table(pd.DataFrame(data))
