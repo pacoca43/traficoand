@@ -1,26 +1,30 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import requests
+import xml.etree.ElementTree as ET
 
-# Configuración de Google Sheets
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-client = gspread.authorize(creds)
-sheet = client.open('Historial_Trafico').sheet1
+st.set_page_config(page_title="Tráfico Andalucía", layout="wide")
+st.title("📍 Estado actual del tráfico en Andalucía")
 
-def guardar_en_sheets(data):
-    # Añade los datos como una nueva fila en Google Sheets
-    sheet.append_row(data)
+URL = "https://infocar.dgt.es/datex2/lod/dgt/incidencias.rdf"
 
-st.title("Monitor de Tráfico en Directo")
+@st.cache_data(ttl=600)  # La app cacheará los datos 10 minutos para ser rápida
+def obtener_datos():
+    try:
+        response = requests.get(URL, timeout=10)
+        # Aquí procesarías el XML. 
+        # Como ejemplo, simulamos la estructura que obtendrías:
+        data = [
+            {"Carretera": "A-4", "Incidencia": "Retención", "Punto": "KM 530", "Estado": "Activo"},
+            {"Carretera": "A-92", "Incidencia": "Obras", "Punto": "KM 120", "Estado": "En curso"},
+            {"Carretera": "SE-30", "Incidencia": "Accidente", "Punto": "KM 12", "Estado": "Pendiente"}
+        ]
+        return pd.DataFrame(data)
+    except Exception as e:
+        return pd.DataFrame({"Error": [f"No se pudieron cargar los datos: {e}"]})
 
-# Ejemplo de datos capturados
-if st.button("Registrar Incidencia Actual"):
-    nueva_fila = ["2026-06-28 13:40", "A-4", "Retención", "KM 530"]
-    guardar_en_sheets(nueva_fila)
-    st.success("¡Guardado en Google Sheets!")
+# Mostrar datos
+df = obtener_datos()
+st.table(df)
 
-# Mostrar histórico desde Sheets
-data = sheet.get_all_records()
-st.table(pd.DataFrame(data))
+st.caption(f"Última actualización: {pd.Timestamp.now().strftime('%H:%M:%S')}")
