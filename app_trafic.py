@@ -2,41 +2,33 @@ import streamlit as st
 import pandas as pd
 import requests
 
-st.set_page_config(page_title="Tráfico Andalucía", layout="wide")
+st.set_page_config(page_title="Monitor de Tráfico", layout="wide")
 st.title("📍 Monitor de Tráfico - Andalucía")
 
-# Usamos una API que sirve los datos de la DGT de forma abierta
-# Esto evita errores de conexión 404 o bloqueos por servidor
-API_URL = "https://datos.dgt.es/api/explore/v2.1/catalog/datasets/incidencias-dgt/records?limit=100"
+# URL directa del archivo XML de incidencias (infocar es el servidor más estable)
+URL = "https://infocar.dgt.es/datex2/lod/dgt/incidencias.xml"
 
 @st.cache_data(ttl=300)
 def obtener_datos():
     try:
-        response = requests.get(API_URL, timeout=10)
-        data = response.json()
+        # Usamos una sesión con timeout y headers de navegador
+        session = requests.Session()
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = session.get(URL, headers=headers, timeout=10)
         
-        # Procesamos la lista de resultados
-        records = data.get('results', [])
-        df = pd.DataFrame(records)
-        
-        # Filtramos columnas relevantes si existen
-        columnas = ['carretera', 'tipoincidencia', 'pk_final', 'provincia']
-        # Solo tomamos las columnas que existan en el dataset
-        df = df[[c for c in columnas if c in df.columns]]
-        return df
+        # Como es XML, usaremos pandas para leerlo directamente si el formato lo permite
+        # O un parseo simple si el XML es directo
+        return response.text
     except Exception as e:
-        return pd.DataFrame({"Error": [f"No se pudieron cargar los datos: {e}"]})
+        return f"Error: {str(e)}"
 
-df = obtener_datos()
+# Intentamos obtener el texto
+contenido = obtener_datos()
 
-# Filtro por provincias de Andalucía
-st.subheader("Filtrar por Andalucía")
-provincias_andaluzas = ['Sevilla', 'Málaga', 'Córdoba', 'Granada', 'Jaén', 'Almería', 'Cádiz', 'Huelva']
-if 'provincia' in df.columns:
-    df_andalucia = df[df['provincia'].isin(provincias_andaluzas)]
-    st.table(df_andalucia)
+if "Error" in contenido:
+    st.error(contenido)
+    st.write("Si el error persiste, la red de la DGT está bloqueando el acceso desde Streamlit.")
 else:
-    st.write("Datos cargados. Mostrando tabla completa:")
-    st.table(df)
-
-st.caption("Fuente: Portal de Datos Abiertos DGT")
+    st.success("¡Datos recibidos correctamente!")
+    st.text_area("Contenido bruto del archivo:", value=contenido[:1000] + "...", height=200)
+    st.write("El archivo ha sido descargado. Ahora puedes procesarlo con XML.fromstring()")
