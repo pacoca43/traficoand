@@ -1,43 +1,42 @@
 import streamlit as st
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
 
-st.set_page_config(page_title="Monitor DGT", layout="wide")
-st.title("📍 Monitor de Tráfico DGT (Seguro)")
+st.set_page_config(page_title="Tráfico Andalucía", layout="wide")
+st.title("📍 Monitor de Tráfico - Andalucía")
 
-# Intentaremos obtener el feed desde la página pública de datos
-URL_BASE = "https://infocar.dgt.es/datex2/lod/dgt/"
+# Usamos una API que sirve los datos de la DGT de forma abierta
+# Esto evita errores de conexión 404 o bloqueos por servidor
+API_URL = "https://datos.dgt.es/api/explore/v2.1/catalog/datasets/incidencias-dgt/records?limit=100"
 
 @st.cache_data(ttl=300)
 def obtener_datos():
     try:
-        # Primero obtenemos el contenido de la carpeta principal
-        response = requests.get(URL_BASE, timeout=15)
-        soup = BeautifulSoup(response.content, 'html.parser')
+        response = requests.get(API_URL, timeout=10)
+        data = response.json()
         
-        # Buscamos el link que termina en .xml
-        links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith('.xml')]
+        # Procesamos la lista de resultados
+        records = data.get('results', [])
+        df = pd.DataFrame(records)
         
-        if not links:
-            return None, "No se encontraron archivos XML en la ruta base."
-        
-        # Usamos el primer archivo encontrado
-        url_feed = URL_BASE + links[0]
-        
-        # Leemos el XML
-        r = requests.get(url_feed, timeout=15)
-        return r.content, None
+        # Filtramos columnas relevantes si existen
+        columnas = ['carretera', 'tipoincidencia', 'pk_final', 'provincia']
+        # Solo tomamos las columnas que existan en el dataset
+        df = df[[c for c in columnas if c in df.columns]]
+        return df
     except Exception as e:
-        return None, str(e)
+        return pd.DataFrame({"Error": [f"No se pudieron cargar los datos: {e}"]})
 
-# Ejecución
-contenido, error = obtener_datos()
+df = obtener_datos()
 
-if error:
-    st.error(f"Error: {error}")
-    st.write("Verifica si la URL base es accesible desde el entorno de la nube.")
+# Filtro por provincias de Andalucía
+st.subheader("Filtrar por Andalucía")
+provincias_andaluzas = ['Sevilla', 'Málaga', 'Córdoba', 'Granada', 'Jaén', 'Almería', 'Cádiz', 'Huelva']
+if 'provincia' in df.columns:
+    df_andalucia = df[df['provincia'].isin(provincias_andaluzas)]
+    st.table(df_andalucia)
 else:
-    st.success("¡Conexión establecida con éxito!")
-    # Aquí procesarías el contenido XML con ET.fromstring(contenido)
-    st.write("Archivo recibido correctamente.")
+    st.write("Datos cargados. Mostrando tabla completa:")
+    st.table(df)
+
+st.caption("Fuente: Portal de Datos Abiertos DGT")
